@@ -22,12 +22,12 @@ func (c Code) String() string {
 }
 
 type Result struct {
-	correct     int
-	halfCorrect int
+	Correct     int
+	HalfCorrect int
 }
 
 func (r Result) String() string {
-	return fmt.Sprintf("%d-%d", r.correct, r.halfCorrect)
+	return fmt.Sprintf("%d-%d", r.Correct, r.HalfCorrect)
 }
 
 type Game struct {
@@ -44,19 +44,28 @@ func NewGame() *Game {
 }
 
 func NewCustomGame(positions int, colors byte) *Game {
+	secretCode := make(Code, positions)
+	for i := 0; i < positions; i++ {
+		secretCode[i] = byte(rand.Intn(int(colors)))
+	}
+
+	return NewCustomGameWithSecret(positions, colors, secretCode)
+}
+
+func NewCustomGameWithSecret(positions int, colors byte, secret Code) *Game {
 	g := &Game{
 		TurnsTaken: 0,
 		positions:  positions,
 		colors:     colors,
-		secretCode: make([]byte, positions),
+		secretCode: secret,
 		startTime:  time.Now(),
 	}
-
-	for i := 0; i < positions; i++ {
-		g.secretCode[i] = byte(rand.Intn(int(colors)))
-	}
-
 	return g
+}
+
+func (g *Game) Reset() {
+	g.TurnsTaken = 0
+	g.startTime = time.Now()
 }
 
 func (g *Game) Positions() int {
@@ -91,10 +100,10 @@ func (g *Game) setSecretCode(c Code) {
 }
 
 func (g *Game) IsWin(r Result) bool {
-	return r.correct == g.Positions() && r.halfCorrect == 0
+	return r.Correct == g.Positions() && r.HalfCorrect == 0
 }
 
-func (g *Game) isWinner(c Code) bool {
+func (g *Game) IsWinner(c Code) bool {
 	return c.String() == g.secretCode.String()
 }
 
@@ -134,9 +143,9 @@ func (game *Game) ScoredGuess(code Code) (Result, error) {
 		return result, err
 	}
 
-	if game.IsWin(result) && game.isWinner(code) {
+	if game.IsWin(result) && game.IsWinner(code) {
 		game.SolveTime = time.Now().Sub(game.startTime)
-		fmt.Printf("%s is correct; solved in %d moves (%v)\n", code, game.TurnsTaken, game.SolveTime)
+		fmt.Printf("%s is a winner; solved in %d moves (%v)\n", code, game.TurnsTaken, game.SolveTime)
 		return result, nil
 	}
 
