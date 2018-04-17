@@ -10,28 +10,7 @@ import (
 	mm "github.com/ianmcmahon/mastermind"
 )
 
-type codeSlice []mm.Code
-
-func (s codeSlice) Less(i, j int) bool {
-	return s[i].String() < s[j].String()
-}
-
-func (s codeSlice) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s codeSlice) Len() int {
-	return len(s)
-}
-
-type codeSet map[string]mm.Code
-
-type gameSize struct {
-	positions int
-	colors    byte
-}
-
-var initialMoves map[gameSize]mm.Code
+var initialMoves map[mm.GameSize]mm.Code
 var initialMutex *sync.Mutex
 
 const (
@@ -41,9 +20,9 @@ const (
 
 func init() {
 	initialMutex = &sync.Mutex{}
-	initialMoves = map[gameSize]mm.Code{
-		gameSize{4, 6}: mm.Code{0, 0, 1, 1},
-		gameSize{5, 6}: mm.Code{0, 0, 1, 2, 3},
+	initialMoves = map[mm.GameSize]mm.Code{
+		mm.GameSize{4, 6}: mm.Code{0, 0, 1, 1},
+		mm.GameSize{5, 6}: mm.Code{0, 0, 1, 2, 3},
 	}
 }
 
@@ -53,7 +32,7 @@ type Solver struct {
 }
 
 func NewSolver(g *mm.Game) *Solver {
-	size := gameSize{g.Positions(), g.Colors()}
+	size := mm.GameSize{g.Positions(), g.Colors()}
 	initialMutex.Lock()
 	if _, ok := initialMoves[size]; !ok {
 		fmt.Printf("calculating initial move for size %v\n", size)
@@ -81,10 +60,10 @@ func (g *Solver) MustScoredGuess(code mm.Code) mm.Result {
 	return r
 }
 
-func (g *Solver) allPossibleCodes() (codeSet, codeSlice) {
+func (g *Solver) allPossibleCodes() (mm.CodeSet, mm.CodeSlice) {
 	numPossibleCodes := int(math.Pow(float64(g.Colors()), float64(g.Positions())))
-	set := make(codeSet, numPossibleCodes)
-	slice := make(codeSlice, numPossibleCodes)
+	set := make(mm.CodeSet, numPossibleCodes)
+	slice := make(mm.CodeSlice, numPossibleCodes)
 
 	for i := 0; i < numPossibleCodes; i++ {
 		remainder := i
@@ -136,8 +115,8 @@ func (g *Solver) emptyHitMap() hitmap {
 	return hm
 }
 
-func (g *Solver) selectMovesWithResult(S codeSet, guess mm.Code, result mm.Result) codeSet {
-	T := codeSet{}
+func (g *Solver) selectMovesWithResult(S mm.CodeSet, guess mm.Code, result mm.Result) mm.CodeSet {
+	T := mm.CodeSet{}
 	hitcounts := g.emptyHitMap()
 	for k, s := range S {
 		res2, err := mm.CheckCode(s, guess, g.Colors())
@@ -154,7 +133,7 @@ func (g *Solver) selectMovesWithResult(S codeSet, guess mm.Code, result mm.Resul
 	return T
 }
 
-func (g *Solver) countHits(S codeSet, code mm.Code) hitmap {
+func (g *Solver) countHits(S mm.CodeSet, code mm.Code) hitmap {
 	hitCounts := g.emptyHitMap()
 	for _, s := range S {
 		result, err := mm.CheckCode(code, s, g.Colors())
@@ -169,9 +148,9 @@ func (g *Solver) countHits(S codeSet, code mm.Code) hitmap {
 
 // returns intersection of S and codes, unless that set has length 0
 // in which case, returns S
-func selectGuesses(S codeSet, codes codeSlice) codeSlice {
-	inS := codeSlice{}
-	notInS := codeSlice{}
+func selectGuesses(S mm.CodeSet, codes mm.CodeSlice) mm.CodeSlice {
+	inS := mm.CodeSlice{}
+	notInS := mm.CodeSlice{}
 	for _, g := range codes {
 		if _, ok := S[g.String()]; ok {
 			inS = append(inS, g)
@@ -189,9 +168,9 @@ func selectGuesses(S codeSet, codes codeSlice) codeSlice {
 // against each s in S, scoring p by the maximum codes represented by one unique Result.
 // Returns a map, keyed on score, where score is the total number of codes remaining in S if p is the next guess
 // and the value is the set of codes in P which produce that score across all combinations
-func (g *Solver) score(S codeSet, P codeSlice) map[int]codeSlice {
+func (g *Solver) score(S mm.CodeSet, P mm.CodeSlice) map[int]mm.CodeSlice {
 	limiter := parallel.NewLimiter(100)
-	guesses := map[int]codeSlice{}
+	guesses := map[int]mm.CodeSlice{}
 
 	for _, p := range P {
 		p1 := p
@@ -204,7 +183,7 @@ func (g *Solver) score(S codeSet, P codeSlice) map[int]codeSlice {
 
 			limiter.Locked(func() error {
 				if _, ok := guesses[score]; !ok {
-					guesses[score] = codeSlice{}
+					guesses[score] = mm.CodeSlice{}
 				}
 				guesses[score] = append(guesses[score], p1)
 				return nil
@@ -228,10 +207,10 @@ func (g *Solver) score(S codeSet, P codeSlice) map[int]codeSlice {
 // and then select all codes where this maximum is as small as possible
 // (to ensure the smallest set on the next pass)
 // we then sort this optimal set and return the smallest code.
-func (g *Solver) bestGuessOfSet(S codeSet, P codeSlice) mm.Code {
+func (g *Solver) bestGuessOfSet(S mm.CodeSet, P mm.CodeSlice) mm.Code {
 	// let's see if we can find a code that minimizes the set of possible next moves
 	minMax := -1
-	codesForMax := map[int]codeSlice{}
+	codesForMax := map[int]mm.CodeSlice{}
 	for _, p := range P {
 		hitcount := g.emptyHitMap()
 		for _, s := range S {
@@ -247,7 +226,7 @@ func (g *Solver) bestGuessOfSet(S codeSet, P codeSlice) mm.Code {
 			}
 		}
 		if _, ok := codesForMax[max]; !ok {
-			codesForMax[max] = codeSlice{}
+			codesForMax[max] = mm.CodeSlice{}
 		}
 		codesForMax[max] = append(codesForMax[max], p)
 
@@ -261,7 +240,7 @@ func (g *Solver) bestGuessOfSet(S codeSet, P codeSlice) mm.Code {
 	return codesForMax[minMax][0]
 }
 
-func bestScore(scores map[int]codeSlice) codeSlice {
+func bestScore(scores map[int]mm.CodeSlice) mm.CodeSlice {
 	best := -1
 	// we want the minimum score, ie the smallest possible S after this move
 	for score, _ := range scores {

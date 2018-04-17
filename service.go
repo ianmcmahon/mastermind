@@ -1,7 +1,9 @@
 package mastermind
 
 import (
+	"bytes"
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 )
@@ -18,7 +20,27 @@ func init() {
 type Code []byte
 
 func (c Code) String() string {
-	return fmt.Sprintf("%v", []byte(c))
+	buf := new(bytes.Buffer)
+	for _, r := range c {
+		buf.WriteRune(rune(r) + '0')
+	}
+	return buf.String()
+}
+
+type CodeSet map[string]Code
+
+type CodeSlice []Code
+
+func (s CodeSlice) Less(i, j int) bool {
+	return s[i].String() < s[j].String()
+}
+
+func (s CodeSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s CodeSlice) Len() int {
+	return len(s)
 }
 
 type Result struct {
@@ -30,10 +52,14 @@ func (r Result) String() string {
 	return fmt.Sprintf("%d-%d", r.Correct, r.HalfCorrect)
 }
 
+type GameSize struct {
+	Positions int
+	Colors    byte
+}
+
 type Game struct {
 	TurnsTaken int
-	positions  int
-	colors     byte
+	Size       GameSize
 	secretCode Code
 	startTime  time.Time
 	SolveTime  time.Duration
@@ -43,24 +69,42 @@ func NewGame() *Game {
 	return NewCustomGame(defaultPositions, defaultColors)
 }
 
-func NewCustomGame(positions int, colors byte) *Game {
-	secretCode := make(Code, positions)
-	for i := 0; i < positions; i++ {
-		secretCode[i] = byte(rand.Intn(int(colors)))
+func randomCode(p int, c byte) Code {
+	code := make(Code, p)
+	for i := 0; i < p; i++ {
+		code[i] = byte(rand.Intn(int(c)))
 	}
+	return code
+}
 
-	return NewCustomGameWithSecret(positions, colors, secretCode)
+func (g *Game) RandomCode() Code {
+	return randomCode(g.Size.Positions, g.Size.Colors)
+}
+
+func NewCustomGame(positions int, colors byte) *Game {
+	return NewCustomGameWithSecret(positions, colors, randomCode(positions, colors))
 }
 
 func NewCustomGameWithSecret(positions int, colors byte, secret Code) *Game {
+	posSqr := math.Pow(float64(positions), 2.0)
+	if float64(colors) > posSqr {
+		fmt.Printf("Limiting colors to positions^2 (%d)\n", colors)
+		colors = byte(posSqr)
+	}
 	g := &Game{
 		TurnsTaken: 0,
-		positions:  positions,
-		colors:     colors,
+		Size: GameSize{
+			Positions: positions,
+			Colors:    colors,
+		},
 		secretCode: secret,
 		startTime:  time.Now(),
 	}
 	return g
+}
+
+func (g *Game) GameSize() GameSize {
+	return g.Size
 }
 
 func (g *Game) Reset() {
@@ -69,11 +113,11 @@ func (g *Game) Reset() {
 }
 
 func (g *Game) Positions() int {
-	return g.positions
+	return g.Size.Positions
 }
 
 func (g *Game) Colors() byte {
-	return g.colors
+	return g.Size.Colors
 }
 
 func (g *Game) EmptyCode() Code {
@@ -81,14 +125,14 @@ func (g *Game) EmptyCode() Code {
 }
 
 func (g *Game) Code(code string) (Code, error) {
-	if len(code) != g.positions {
-		return nil, fmt.Errorf("code must have %d positions", g.positions)
+	if len(code) != g.Size.Positions {
+		return nil, fmt.Errorf("code must have %d positions", g.Size.Positions)
 	}
-	out := Code(make([]byte, g.positions))
+	out := Code(make([]byte, g.Size.Positions))
 	for i, c := range code {
 		v := byte(c - '0')
-		if v < 0 || v >= g.colors {
-			return nil, fmt.Errorf("code must use only colors 0 - %d", g.colors-1)
+		if v < 0 || v >= g.Size.Colors {
+			return nil, fmt.Errorf("code must use only colors 0 - %d", g.Size.Colors-1)
 		}
 		out[i] = v
 	}

@@ -49,7 +49,7 @@ func TestSolver(t *testing.T) {
 	sumDuration := 0 * time.Millisecond
 	var worstCaseCode mm.Code
 
-	positions := 6
+	positions := 5
 	colors := byte(6)
 
 	numGames := 3
